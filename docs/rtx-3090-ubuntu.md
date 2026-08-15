@@ -45,24 +45,22 @@ sudo cp /usr/local/cuda/targets/x86_64-linux/include/crt/math_functions.h.ninfer
 ## Build
 
 ```bash
-cmake -S . -B build -G Ninja \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ```
 
-`CMAKE_CUDA_COMPILER` matters when Ubuntu's `nvidia-cuda-toolkit` package is also installed: its
-`/usr/bin/nvcc` is found first on `PATH` and its CUDA 12.4 default architecture (`sm_52`) is no
-longer accepted by `ptxas`, so CMake's compiler detection fails. Pointing at
-`/usr/local/cuda/bin/nvcc` avoids it. The architecture is fixed at `sm_86`.
+The build defaults to `/usr/local/cuda/bin/nvcc` on Linux. That matters when Ubuntu's
+`nvidia-cuda-toolkit` package is also installed: its `/usr/bin/nvcc` comes first on `PATH`, and its
+CUDA 12.4 default architecture (`sm_52`) is no longer accepted by `ptxas`, so CMake's compiler
+detection fails with a confusing `ptxas fatal` message. Set `-DCMAKE_CUDA_COMPILER=...` or `CUDACXX`
+to use a toolkit installed elsewhere. The architecture is fixed at `sm_86`.
 
 The binaries land in `build/apps/ninfer` and `build/apps/ninfer-serve`.
 
 ### Tests
 
 ```bash
-cmake -S . -B build-test -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc -DBUILD_TESTING=ON
+cmake -S . -B build-test -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
 cmake --build build-test --parallel
 CUDA_VISIBLE_DEVICES=0 ctest --test-dir build-test -j4
 ```
@@ -88,6 +86,19 @@ path as the first argument). The OpenAI-compatible API is then at `http://127.0.
 On a multi-GPU host the launchers pin `CUDA_VISIBLE_DEVICES=0` unless it is already set; the
 binaries also accept `--device N`. Prefer a card that is not driving a display — the 24 GB profiles
 leave little headroom.
+
+## Measured on this port
+
+Qwen3.8-27B (`qwen3_8_27b.ninfer`, SHA-256 verified) on one RTX 3090, Ubuntu 26.04, CUDA 13.1,
+greedy decoding, INT8 KV, CUDA Graphs, MTP3 with ReplaySSM:
+
+| Profile | Prompt | Result | Peak VRAM |
+|---|---|---|---:|
+| `run-qwen38-c1.sh` (64K context) | 4,870 tokens | 931 tok/s prefill, 85.3 tok/s decode, 81.1% MTP acceptance, 5.2 s TTFT | 20,097 MiB |
+| `run-qwen38-c8.sh` (8 concurrent) | 67 tokens each | 1,100 generated tokens in 8.8 s — 125 aggregate tok/s, decode batch 6.9 | 20,591 MiB |
+
+These are single spot checks, not the published benchmark campaign; the C8 run used short
+128-256 token replies, so its ramp-up weighs more heavily than in the 1,024-token release test.
 
 ## Linux-specific runtime changes
 

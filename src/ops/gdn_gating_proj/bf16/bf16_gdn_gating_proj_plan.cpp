@@ -343,8 +343,9 @@ std::size_t route_capacity(const std::array<RouteSpec, N>& routes, const Bf16Gdn
                            std::int32_t min_cols, std::int32_t max_cols) {
     std::size_t maximum = 0;
     auto consider       = [&](std::int32_t cols) {
-        maximum = std::max(
-            maximum, bf16_gdn_gating_resolve_plan({base.heads, base.input_rows, cols}).workspace_bytes);
+        const Bf16GdnGatingPlan plan =
+            bf16_gdn_gating_resolve_plan({base.heads, base.input_rows, cols});
+        maximum = std::max(maximum, plan.workspace_bytes);
     };
     for (const RouteSpec& route : routes) {
         if (route.cols.last < min_cols || route.cols.first > max_cols) { continue; }

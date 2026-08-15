@@ -12,6 +12,16 @@ if(NOT CMAKE_CUDA_ARCHITECTURES STREQUAL "86")
     "'${CMAKE_CUDA_ARCHITECTURES}'")
 endif()
 
+# Ubuntu's nvidia-cuda-toolkit package installs a CUDA 12.4 nvcc at /usr/bin,
+# which precedes /usr/local/cuda on PATH and whose default sm_52 target ptxas no
+# longer accepts, so compiler detection fails before the version check below can
+# explain why. Prefer the toolkit installed under /usr/local/cuda unless the
+# build already names a compiler.
+if(UNIX AND NOT APPLE AND NOT DEFINED CMAKE_CUDA_COMPILER AND NOT DEFINED ENV{CUDACXX}
+   AND EXISTS /usr/local/cuda/bin/nvcc)
+  set(CMAKE_CUDA_COMPILER /usr/local/cuda/bin/nvcc CACHE FILEPATH "CUDA compiler")
+endif()
+
 project(ninfer LANGUAGES C CXX CUDA)
 
 # --- Global settings ---------------------------------------------------------

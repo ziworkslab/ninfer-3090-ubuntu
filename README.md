@@ -8,8 +8,7 @@ on Linux; the Windows release notes below are kept from the upstream fork.
 
 ```bash
 sudo ./scripts/setup-ubuntu.sh        # dependencies + CUDA/glibc header patch
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ./scripts/download-qwen38.sh          # 16.96 GiB, resumable
 ./scripts/run-qwen38-c1.sh            # OpenAI API on http://127.0.0.1:8080/v1
