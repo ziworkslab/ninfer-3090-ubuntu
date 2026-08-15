@@ -22,15 +22,29 @@ export UPSTREAM_API_KEY=${UPSTREAM_API_KEY-${NINFER_API_KEY-welcome}}
 export FIRECRAWL_URL=${FIRECRAWL_URL:-http://127.0.0.1:${FIRECRAWL_PORT:-3002}}
 export MODEL=${MODEL:-qwen3.8-27b}
 
+# Both dependencies take time to come up — Firecrawl's API needs about 15 s
+# after its container starts, and a model load is slower still — so wait for
+# them rather than failing a launcher that was started one command too early.
+wait_seconds=${WAIT_SECONDS:-90}
+
+wait_for() {
+  local url=$1 name=$2 hint=$3 waited=0
+  while ! curl -s --max-time 5 -o /dev/null "${url}"; do
+    if (( waited >= wait_seconds )); then
+      echo "error: no ${name} at ${url} after ${wait_seconds}s. ${hint}" >&2
+      return 1
+    fi
+    [[ ${waited} -eq 0 ]] && echo "waiting for ${name} at ${url} ..."
+    sleep 2
+    waited=$((waited + 2))
+  done
+}
+
 fail=0
-if ! curl -s --max-time 5 "${UPSTREAM%/v1}/health" >/dev/null; then
-  echo "error: no ninfer-serve at ${UPSTREAM}. Start a scripts/run-*.sh launcher first." >&2
-  fail=1
-fi
-if ! curl -s --max-time 5 -o /dev/null "${FIRECRAWL_URL}/"; then
-  echo "error: no Firecrawl at ${FIRECRAWL_URL}. Run scripts/firecrawl-start.sh first." >&2
-  fail=1
-fi
+wait_for "${UPSTREAM%/v1}/health" "ninfer-serve" \
+  "Start a scripts/run-*.sh launcher first." || fail=1
+wait_for "${FIRECRAWL_URL}/" "Firecrawl" \
+  "Run scripts/firecrawl-start.sh, then check: docker compose -f firecrawl/docker-compose.yaml logs api" || fail=1
 [[ ${fail} -eq 0 ]] || exit 1
 
 advertised=${PROXY_HOST}

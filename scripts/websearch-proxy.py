@@ -38,6 +38,11 @@ TIMEOUT = int(os.environ.get("TIMEOUT", "600"))
 PER_RESULT_CHARS = int(os.environ.get("PER_RESULT_CHARS", "1500"))
 MAX_ROUNDS = int(os.environ.get("MAX_ROUNDS", "3"))
 MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "3000"))
+# A client's max_tokens was chosen for a plain answer, but here the budget is
+# also spent on the model's reasoning and on the tool-call turn. Too small a cap
+# ends the answer turn before any answer text is emitted, which reaches the
+# client as an empty message, so raise it to a floor that leaves room.
+MIN_ANSWER_TOKENS = int(os.environ.get("MIN_ANSWER_TOKENS", "1024"))
 TODAY = os.environ.get("TODAY") or time.strftime("%Y-%m-%d")
 SHOW_PROGRESS = os.environ.get("SHOW_PROGRESS", "1") not in ("0", "false", "no")
 
@@ -103,10 +108,13 @@ TOOLS = [
 DISPATCH = {"web_search": web_search, "scrape_url": scrape_url}
 
 
-def upstream_stream(messages, max_tokens, temperature):
+def upstream_stream(messages, max_tokens, temperature, use_tools=True):
     """Call ninfer-serve with streaming and yield each parsed chunk."""
-    body = {"model": MODEL, "messages": messages, "tools": TOOLS,
-            "tool_choice": "auto", "max_tokens": max_tokens or MAX_TOKENS, "stream": True}
+    body = {"model": MODEL, "messages": messages, "stream": True,
+            "max_tokens": max(max_tokens or MAX_TOKENS, MIN_ANSWER_TOKENS)}
+    if use_tools:
+        body["tools"] = TOOLS
+        body["tool_choice"] = "auto"
     if temperature is not None:
         body["temperature"] = temperature
     headers = {"Content-Type": "application/json"}
@@ -161,6 +169,9 @@ def agent_events(messages, max_tokens, temperature, progress=False):
                     slot["arguments"] += function["arguments"]
 
         if not pending:
+            if not sent_text:
+                yield ("(The model produced no answer text. It may have spent the output "
+                       "budget on reasoning — try again or raise max_tokens.)")
             return  # the turn was the answer
 
         if sent_text:
@@ -188,7 +199,19 @@ def agent_events(messages, max_tokens, temperature, progress=False):
             msgs.append({"role": "tool", "tool_call_id": call_id,
                          "content": json.dumps(result, ensure_ascii=False)})
 
-    yield "(Reached the search iteration limit. Please try again.)"
+    # The model kept searching instead of concluding. Ask once more with no
+    # tools offered, so it has to answer from what the searches already returned
+    # rather than leaving the client with an apology.
+    if progress:
+        yield "_answering from the results so far_\n\n"
+    answered = False
+    for chunk in upstream_stream(msgs, max_tokens, temperature, use_tools=False):
+        content = ((chunk.get("choices") or [{}])[0].get("delta") or {}).get("content")
+        if content:
+            answered = True
+            yield content
+    if not answered:
+        yield "(No answer after several searches. Please try again.)"
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -301,4 +324,12 @@ if __name__ == "__main__":
           f"(upstream={UPSTREAM}, firecrawl={FIRECRAWL_URL}, model={MODEL}, "
           f"today={TODAY}, max_rounds={MAX_ROUNDS}, "
           f"auth={'api key' if PROXY_API_KEY else 'disabled'})", file=sys.stderr)
-    ThreadingHTTPServer((PROXY_HOST, PROXY_PORT), Handler).serve_forever()
+    try:
+        ThreadingHTTPServer((PROXY_HOST, PROXY_PORT), Handler).serve_forever()
+    except OSError as error:
+        print(f"error: cannot listen on {PROXY_HOST}:{PROXY_PORT}: {error}\n"
+              f"       Another proxy is probably still running "
+              f"(pkill -f websearch-proxy.py), or set PROXY_PORT.", file=sys.stderr)
+        raise SystemExit(1)
+    except KeyboardInterrupt:
+        pass

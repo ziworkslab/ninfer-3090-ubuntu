@@ -88,6 +88,8 @@ requires the key `welcome`. Additional environment variables:
 | `MAX_ROUNDS` | `3` | tool-loop iterations before giving up |
 | `PER_RESULT_CHARS` | `1500` | characters of each result passed to the model |
 | `MAX_TOKENS` | `3000` | output cap when the client sends none |
+| `MIN_ANSWER_TOKENS` | `1024` | floor applied to the client's `max_tokens` |
+| `WAIT_SECONDS` | `90` | how long the launcher waits for its dependencies |
 | `SHOW_PROGRESS` | `1` | announce each search while streaming |
 
 Firecrawl itself is configured by `scripts/firecrawl.env`, copied to
@@ -97,6 +99,29 @@ self-hosted [SearXNG](https://github.com/searxng/searxng) instead. Firecrawl's
 own AI features point at this host's `ninfer-serve`, so no text is sent to a
 third-party model API. Idle footprint is about 3.4 GB of system RAM across five
 containers.
+
+## Troubleshooting
+
+**`error: no Firecrawl at http://127.0.0.1:3002`** — its API needs about 15 s
+after the container starts, so a proxy launched in the next breath finds nothing
+there. The launcher now waits up to `WAIT_SECONDS` for both dependencies and
+prints `waiting for Firecrawl ...` while it does. If it still times out, check
+the containers:
+
+```bash
+docker ps --format '{{.Names}}\t{{.Status}}'
+(cd firecrawl && docker compose logs --tail=50 api)
+```
+
+**`Address already in use`** — an earlier proxy is still running.
+`pkill -f websearch-proxy.py`, or set `PROXY_PORT`.
+
+**An empty answer, or "no answer after several searches"** — the model spends
+output budget on reasoning and on the tool-call turn before it writes anything,
+so a small `max_tokens` can end the turn first. `MIN_ANSWER_TOKENS` raises the
+cap to leave room, and when the model keeps searching past `MAX_ROUNDS` the
+proxy asks once more with no tools offered, forcing an answer from the results
+already gathered.
 
 ## Privacy
 
