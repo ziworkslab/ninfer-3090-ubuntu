@@ -3,6 +3,11 @@
 # Resolves ninfer-serve and the model artifact, and pins the run to a single
 # RTX 3090 (this repository's profiles assume one 24 GB device). Override with
 # NINFER_SERVE, NINFER_MODEL_DIR, or CUDA_VISIBLE_DEVICES.
+#
+# Listening address: NINFER_HOST (default 127.0.0.1, loopback only),
+# NINFER_PORT (default 8080), and NINFER_API_KEY, which the server then requires
+# as an OpenAI bearer token or Anthropic x-api-key header. Serve the LAN with
+# NINFER_HOST=0.0.0.0 and set a key — the server has no other access control.
 
 ninfer_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
@@ -44,4 +49,15 @@ ninfer_prepare() {
   fi
 
   export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+
+  local host=${NINFER_HOST:-127.0.0.1}
+  local port=${NINFER_PORT:-8080}
+  endpoint=(--host "${host}" --port "${port}")
+  if [[ -n ${NINFER_API_KEY:-} ]]; then
+    endpoint+=(--api-key "${NINFER_API_KEY}")
+  elif [[ ${host} != 127.0.0.1 && ${host} != localhost && ${host} != ::1 ]]; then
+    echo "warning: listening on ${host} without NINFER_API_KEY — anyone who can reach this" >&2
+    echo "         port can use the model. Set NINFER_API_KEY to require a key." >&2
+  fi
+  url="http://${host}:${port}/v1"
 }

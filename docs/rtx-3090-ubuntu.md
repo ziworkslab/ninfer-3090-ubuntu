@@ -74,6 +74,7 @@ All 83 tests pass on an RTX 3090. Six are skipped: five need a downloaded `.ninf
 ./scripts/download-qwen38.sh          # 16.96 GiB, resumable
 ./scripts/run-qwen38-c1.sh            # one user, 64K context, MTP3
 ./scripts/run-qwen38-c8.sh            # eight users, 8K context, MTP3
+./scripts/run-qwen38-agent.sh         # coding agents: 4 x 32K context, 96K KV pool
 ./scripts/run-qwen38-vision.sh        # images, one user, 32K context
 ./scripts/run-qwen36-35b-vision.sh    # Qwen3.6-35B-A3B images, MTP off
 ```
@@ -86,6 +87,50 @@ path as the first argument). The OpenAI-compatible API is then at `http://127.0.
 On a multi-GPU host the launchers pin `CUDA_VISIBLE_DEVICES=0` unless it is already set; the
 binaries also accept `--device N`. Prefer a card that is not driving a display — the 24 GB profiles
 leave little headroom.
+
+## Serving other machines on the LAN
+
+The server binds `127.0.0.1` by default and has no access control beyond `--api-key`. To reach it
+from another PC:
+
+```bash
+NINFER_HOST=0.0.0.0 NINFER_API_KEY=$(openssl rand -hex 16) ./scripts/run-qwen38-agent.sh
+sudo ufw allow from 192.168.0.0/16 to any port 8080 proto tcp   # if ufw is active
+```
+
+`NINFER_HOST`, `NINFER_PORT`, and `NINFER_API_KEY` are honoured by every launcher; the key is
+required as an OpenAI `Authorization: Bearer` or Anthropic `x-api-key` header, and a non-loopback
+host without a key prints a warning. `GET /health` stays unauthenticated. Add `--cors` only if a
+browser page calls the API directly. Do not expose the port to the internet — there is no rate
+limiting, and a single long request occupies the GPU.
+
+## Coding agents (OpenCode, Cline, Aider, ...)
+
+Point the agent at `http://<host>:8080/v1` as an OpenAI-compatible provider, with the model id
+`qwen3.8-27b` and the API key if one is set.
+
+`scripts/run-qwen38-agent.sh` is the profile for this: four concurrent requests of up to 32K
+context each from a 96K-token shared pool, with the admission wait raised to 10 minutes so bursts
+queue instead of returning `503`. It peaked at 22.2 GiB in testing.
+
+Three measured properties decide the right settings:
+
+- **The KV pool, not `--max-concurrency`, is the real concurrency limit.** Four simultaneous
+  25K-token prompts need ~100K pooled tokens. With the C1 profile's 64K pool only two of four such
+  requests were admitted, and with the 30 s default `--pending-timeout-ms` the other two returned
+  `503 Service Unavailable` while waiting.
+- **Prefills do not overlap.** Prefill runs at ~850 tok/s and one request at a time, so four cold
+  25K-token prompts finished at 46 s, 75 s, 105 s and 123 s. Concurrency multiplies decode
+  throughput, not prefill throughput.
+- **Continuing a conversation is nearly free.** A follow-up turn on a 25K-token history reused
+  25,443 tokens and dropped TTFT from 28.9 s to 0.19 s. Prefix reuse restores the previous turn's
+  KV, so it applies when the agent appends to the same conversation — not when two different
+  requests merely share a long blob of text.
+
+So a single agent session is best served by `run-qwen38-c1.sh` (64K context, one slot, everything
+after the first turn is fast). Choose `run-qwen38-agent.sh` when several sessions, subagents, or
+background tasks run at once and 32K per request is enough. Raise `--kv-capacity` past 98304 only
+carefully: a 128K pool left just 854 MiB free on this card.
 
 ## Measured on this port
 
