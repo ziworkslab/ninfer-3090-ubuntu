@@ -14,6 +14,15 @@ cmake --build build --parallel
 ./scripts/run-qwen38-c1.sh            # OpenAI API on http://127.0.0.1:8080/v1
 ```
 
+Web search is available through a Firecrawl-backed OpenAI-compatible proxy — see
+[docs/web-search.md](docs/web-search.md):
+
+```bash
+./scripts/setup-firecrawl.sh          # once
+./scripts/firecrawl-start.sh          # search backend on :3002
+./scripts/run-websearch-proxy.sh      # search-enabled API on :8899
+```
+
 The `scripts/run-*.sh` launchers mirror the Windows `.bat` launchers and their tested RTX 3090
 profiles, plus `run-qwen38-agent.sh` for coding agents. They listen on `0.0.0.0:8080` with the API
 key `welcome`; override with `NINFER_HOST`, `NINFER_PORT`, and `NINFER_API_KEY`.

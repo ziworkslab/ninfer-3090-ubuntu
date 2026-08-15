@@ -10,6 +10,7 @@ run the CLI or HTTP server.
 | [CLI](cli.md) | text, chat-history, image/video input, output streams, sampling, MTP, and common runtime options |
 | [HTTP serving](serving.md) | OpenAI Responses/Chat Completions, Anthropic Messages, state, streaming, token counting, authentication, and tool calls |
 | [Performance](performance.md) | RTX 5090 single-request and concurrent-decode results, MTP/DFlash measurements, and reproduction commands |
+| [Web search](web-search.md) | the Firecrawl-backed proxy that lets the model search the web |
 | [RTX 3090 on Ubuntu](rtx-3090-ubuntu.md) | Linux build, the CUDA/glibc header patch, launchers, and the sm_86 runtime differences |
 | [RTX 3090 on Windows](rtx-3090-windows.md) | the upstream fork's native Windows release |
 | [CLI examples](../examples/cli/) | committed text, multimodal, thinking, long-decode, and long-context inputs |
