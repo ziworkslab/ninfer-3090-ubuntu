@@ -82,7 +82,7 @@ All 83 tests pass on an RTX 3090. Six are skipped: five need a downloaded `.ninf
 The launchers are the Linux equivalents of the release `.bat` files and use the same tested RTX
 3090 profiles. They find `ninfer-serve` in `build/apps`, beside the script, or on `PATH`
 (`NINFER_SERVE` overrides), and read the artifact from `./models` (`NINFER_MODEL_DIR`, or pass a
-path as the first argument). The OpenAI-compatible API is then at `http://127.0.0.1:8080/v1`.
+path as the first argument). The OpenAI-compatible API is then at `http://<this-host>:8080/v1`, printed at startup.
 
 On a multi-GPU host the launchers pin `CUDA_VISIBLE_DEVICES=0` unless it is already set; the
 binaries also accept `--device N`. Prefer a card that is not driving a display — the 24 GB profiles
@@ -90,24 +90,33 @@ leave little headroom.
 
 ## Serving other machines on the LAN
 
-The server binds `127.0.0.1` by default and has no access control beyond `--api-key`. To reach it
-from another PC:
+The launchers listen on `0.0.0.0:8080` and require the API key `welcome` by default, so another PC
+on the LAN can use the server as soon as the firewall allows the port:
 
 ```bash
-NINFER_HOST=0.0.0.0 NINFER_API_KEY=$(openssl rand -hex 16) ./scripts/run-qwen38-agent.sh
 sudo ufw allow from 192.168.0.0/16 to any port 8080 proto tcp   # if ufw is active
 ```
 
-`NINFER_HOST`, `NINFER_PORT`, and `NINFER_API_KEY` are honoured by every launcher; the key is
-required as an OpenAI `Authorization: Bearer` or Anthropic `x-api-key` header, and a non-loopback
-host without a key prints a warning. `GET /health` stays unauthenticated. Add `--cors` only if a
-browser page calls the API directly. Do not expose the port to the internet — there is no rate
-limiting, and a single long request occupies the GPU.
+Clients dial `http://<this-host>:8080/v1` — the launcher prints the exact URL and key at startup.
+Both the hostname (`rtx3090x2.local` through mDNS) and the address (`192.168.2.105`) work; avoid
+this host's VPN (`10.9.0.1`) and Docker (`172.17.0.1`) addresses.
+
+```bash
+curl http://192.168.2.105:8080/health                                    # unauthenticated probe
+curl http://192.168.2.105:8080/v1/models -H 'Authorization: Bearer welcome'
+```
+
+Override with `NINFER_HOST`, `NINFER_PORT`, and `NINFER_API_KEY`; `NINFER_HOST=127.0.0.1` restores
+loopback-only listening, and an empty `NINFER_API_KEY` disables authentication and prints a
+warning. The key is the only access control — there is no rate limiting and one long request
+occupies the GPU, so keep the port off the internet and change the default key if the LAN is not
+trusted. `GET /health` stays unauthenticated. Add `--cors` only if a browser page calls the API
+directly.
 
 ## Coding agents (OpenCode, Cline, Aider, ...)
 
 Point the agent at `http://<host>:8080/v1` as an OpenAI-compatible provider, with the model id
-`qwen3.8-27b` and the API key if one is set.
+`qwen3.8-27b` and the API key (`welcome` unless changed).
 
 `scripts/run-qwen38-agent.sh` is the profile for this: four concurrent requests of up to 32K
 context each from a 96K-token shared pool, with the admission wait raised to 10 minutes so bursts

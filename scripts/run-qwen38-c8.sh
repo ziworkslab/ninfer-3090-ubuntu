@@ -5,6 +5,7 @@ source "$(dirname "$0")/common.sh"
 ninfer_prepare qwen3_8_27b.ninfer "${1:-}"
 
 echo "Starting Qwen3.8-27B at ${url}"
+echo "API key: ${api_key:-(none)}"
 echo "Profile: up to eight requests, 8K context, MTP3, ReplaySSM (GPU ${CUDA_VISIBLE_DEVICES})"
 exec "${server}" "${model}" \
   "${endpoint[@]}" \

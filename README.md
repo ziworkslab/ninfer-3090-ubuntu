@@ -15,8 +15,8 @@ cmake --build build --parallel
 ```
 
 The `scripts/run-*.sh` launchers mirror the Windows `.bat` launchers and their tested RTX 3090
-profiles, plus `run-qwen38-agent.sh` for coding agents. Set `NINFER_HOST=0.0.0.0` and
-`NINFER_API_KEY=...` to serve other machines on the LAN.
+profiles, plus `run-qwen38-agent.sh` for coding agents. They listen on `0.0.0.0:8080` with the API
+key `welcome`; override with `NINFER_HOST`, `NINFER_PORT`, and `NINFER_API_KEY`.
 
 ---
 

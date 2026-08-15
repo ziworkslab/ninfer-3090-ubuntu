@@ -4,10 +4,11 @@
 # RTX 3090 (this repository's profiles assume one 24 GB device). Override with
 # NINFER_SERVE, NINFER_MODEL_DIR, or CUDA_VISIBLE_DEVICES.
 #
-# Listening address: NINFER_HOST (default 127.0.0.1, loopback only),
-# NINFER_PORT (default 8080), and NINFER_API_KEY, which the server then requires
-# as an OpenAI bearer token or Anthropic x-api-key header. Serve the LAN with
-# NINFER_HOST=0.0.0.0 and set a key — the server has no other access control.
+# Listening address: NINFER_HOST (default 0.0.0.0, every interface),
+# NINFER_PORT (default 8080), and NINFER_API_KEY (default "welcome"), which the
+# server requires as an OpenAI bearer token or Anthropic x-api-key header. The
+# key is the only access control, so keep the port off the internet and set
+# NINFER_HOST=127.0.0.1 to go back to loopback only.
 
 ninfer_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
@@ -50,14 +51,24 @@ ninfer_prepare() {
 
   export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
 
-  local host=${NINFER_HOST:-127.0.0.1}
+  local host=${NINFER_HOST:-0.0.0.0}
   local port=${NINFER_PORT:-8080}
+  local key=${NINFER_API_KEY-welcome}
   endpoint=(--host "${host}" --port "${port}")
-  if [[ -n ${NINFER_API_KEY:-} ]]; then
-    endpoint+=(--api-key "${NINFER_API_KEY}")
-  elif [[ ${host} != 127.0.0.1 && ${host} != localhost && ${host} != ::1 ]]; then
-    echo "warning: listening on ${host} without NINFER_API_KEY — anyone who can reach this" >&2
-    echo "         port can use the model. Set NINFER_API_KEY to require a key." >&2
+  if [[ -n ${key} ]]; then
+    endpoint+=(--api-key "${key}")
+  else
+    echo "warning: NINFER_API_KEY is empty — anyone who can reach ${host}:${port} can use the" >&2
+    echo "         model. Set NINFER_API_KEY to require a key." >&2
   fi
-  url="http://${host}:${port}/v1"
+
+  # 0.0.0.0 is not an address a client can dial, so advertise this host's first
+  # routable address instead.
+  local advertised=${host}
+  if [[ ${host} == 0.0.0.0 || ${host} == "::" ]]; then
+    advertised=$(hostname -I 2>/dev/null | awk '{print $1}')
+    advertised=${advertised:-127.0.0.1}
+  fi
+  url="http://${advertised}:${port}/v1"
+  api_key=${key}
 }
